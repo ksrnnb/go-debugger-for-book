@@ -48,4 +48,10 @@ func main() {
 		fmt.Fprintf(os.Stderr, "faield to execute ptrace cont: %s\n", err)
 		return
 	}
+
+	_, err = unix.Wait4(pid, &ws, unix.WALL, nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to wait pid %d\n", pid)
+		return
+	}
 }

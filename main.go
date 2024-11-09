@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"syscall"
 
-	"golang.org/x/sys/unix"
+	"github.com/ksrnnb/go-debugger/debugger"
+	"github.com/ksrnnb/go-debugger/terminal"
 )
 
 var debuggeePath string
@@ -29,29 +29,21 @@ func main() {
 	}
 	defer cleanup()
 
-	pid, err := executeDebuggeeProcess(absDebuggeePath)
+	d, err := debugger.NewDebugger(&debugger.Config{
+		DebuggeePath: absDebuggeePath,
+	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to execute debugee program: %s\n", err)
+		fmt.Fprintf(os.Stderr, "failed to initialize debugger: %s", err)
 		return
 	}
 
-	fmt.Printf("pid of debuggee program is %d\n", pid)
+	cmds := terminal.NewCommands()
+	term := terminal.NewTerminal(d, cmds)
 
-	var ws unix.WaitStatus
-	_, err = unix.Wait4(pid, &ws, unix.WALL, nil)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to wait pid %d\n", pid)
+	if err := term.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to run terminal: %s", err)
 		return
 	}
 
-	if err := syscall.PtraceCont(pid, 0); err != nil {
-		fmt.Fprintf(os.Stderr, "faield to execute ptrace cont: %s\n", err)
-		return
-	}
-
-	_, err = unix.Wait4(pid, &ws, unix.WALL, nil)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to wait pid %d\n", pid)
-		return
-	}
+	fmt.Printf("go-debugger gracefully shut down\n")
 }

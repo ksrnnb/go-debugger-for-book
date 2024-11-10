@@ -39,10 +39,10 @@ func (t *Terminal) Run() error {
 
 		// input: "<command> <arg1> <arg2>"
 		// -> args: [<arg1>, <arg2>]
-		s := strings.SplitN(input, " ", 2)
-		var args string
-		if len(s) == 2 {
-			args = s[1]
+		s := strings.Split(input, " ")
+		var args []string
+		if len(s) >= 2 {
+			args = s[1:]
 		}
 
 		if err := cmdFn(t.debugger, args); err != nil {
@@ -58,7 +58,7 @@ func (t *Terminal) Run() error {
 }
 
 func (t *Terminal) Find(commandWithArgs string) (cmdfunc, error) {
-	s := strings.SplitN(commandWithArgs, " ", 2)
+	s := strings.Split(commandWithArgs, " ")
 	command := s[0]
 	for _, cmd := range t.cmds.cmds {
 		if slices.Contains(cmd.aliases, command) {

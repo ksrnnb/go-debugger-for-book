@@ -18,8 +18,9 @@ type Config struct {
 }
 
 type Debugger struct {
-	config *Config
-	pid    int
+	config      *Config
+	pid         int
+	breakpoints map[uint64]*Breakpoint
 }
 
 func NewDebugger(config *Config) (*Debugger, error) {
@@ -84,6 +85,17 @@ func (d *Debugger) Quit() error {
 	}
 
 	return ErrDebuggeeFinished
+}
+
+func (d *Debugger) SetBreakpoint(addr uint64) error {
+	bp, err := NewBreakpoint(d.pid, uintptr(addr))
+	if err != nil {
+		return err
+	}
+
+	d.breakpoints[addr] = bp
+
+	return nil
 }
 
 func (d *Debugger) wait() (unix.WaitStatus, error) {

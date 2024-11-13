@@ -16,7 +16,8 @@ type Breakpoint struct {
 }
 
 func NewBreakpoint(pid int, addr uintptr) (*Breakpoint, error) {
-	bp := &Breakpoint{pid: pid, addr: addr}
+	// originalInstruction must be allocated 8 bytes buffer to execute PtracePeekData
+	bp := &Breakpoint{pid: pid, addr: addr, originalInstruction: make([]byte, 8)}
 	if err := bp.Enable(); err != nil {
 		return nil, err
 	}
@@ -32,7 +33,7 @@ func (bp *Breakpoint) Enable() error {
 	}
 
 	data := binary.LittleEndian.Uint64(bp.originalInstruction)
-	// data & ^0xff => data & 11111111 11111111 11111111 00000000
+	// data & ^uint64(0xff) => data & 11111111 11111111 11111111 11111111 11111111 11111111 11111111 00000000
 	newData := (data & ^uint64(0xff)) | Int3Instruction
 	newInstruction := make([]byte, 8)
 	binary.LittleEndian.PutUint64(newInstruction, newData)

@@ -24,7 +24,10 @@ type Debugger struct {
 }
 
 func NewDebugger(config *Config) (*Debugger, error) {
-	d := &Debugger{config: config}
+	d := &Debugger{
+		config:      config,
+		breakpoints: make(map[uint64]*Breakpoint),
+	}
 	if err := d.Launch(); err != nil {
 		return nil, err
 	}
@@ -72,10 +75,16 @@ func (d *Debugger) Continue() error {
 		return ErrDebuggeeFinished
 	}
 
-	// ignore SIGURG signal because it is not expected signal
-	if ws.Stopped() && ws.StopSignal() == syscall.SIGURG {
-		return d.Continue()
+	if ws.Stopped() {
+		switch ws.StopSignal() {
+		case syscall.SIGTRAP:
+			fmt.Println("hit breakpoint!")
+		default:
+			// ignore SIGURG signal because it is not expected signal
+			return d.Continue()
+		}
 	}
+
 	return nil
 }
 

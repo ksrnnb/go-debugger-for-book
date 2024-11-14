@@ -6,8 +6,6 @@ import (
 	"log"
 	"os"
 	"syscall"
-
-	"golang.org/x/sys/unix"
 )
 
 var debuggeePath string
@@ -31,14 +29,13 @@ func main() {
 
 	pid, err := executeDebuggeeProcess(absDebuggeePath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to execute debugee program: %s\n", err)
-		return
+		log.Fatalf("failed to execute debugee program: %s", err)
 	}
 
 	fmt.Printf("pid of debuggee program is %d\n", pid)
 
-	var ws unix.WaitStatus
-	_, err = unix.Wait4(pid, &ws, unix.WALL, nil)
+	var ws syscall.WaitStatus
+	_, err = syscall.Wait4(pid, &ws, syscall.WALL, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to wait pid %d\n", pid)
 		return
@@ -49,7 +46,7 @@ func main() {
 		return
 	}
 
-	_, err = unix.Wait4(pid, &ws, unix.WALL, nil)
+	_, err = syscall.Wait4(pid, &ws, syscall.WALL, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to wait pid %d\n", pid)
 		return

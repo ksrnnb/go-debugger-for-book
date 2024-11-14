@@ -18,12 +18,16 @@ type Config struct {
 }
 
 type Debugger struct {
-	config *Config
-	pid    int
+	config      *Config
+	pid         int
+	breakpoints map[uint64]*Breakpoint
 }
 
 func NewDebugger(config *Config) (*Debugger, error) {
-	d := &Debugger{config: config}
+	d := &Debugger{
+		config:      config,
+		breakpoints: make(map[uint64]*Breakpoint),
+	}
 	if err := d.Launch(); err != nil {
 		return nil, err
 	}
@@ -71,10 +75,16 @@ func (d *Debugger) Continue() error {
 		return ErrDebuggeeFinished
 	}
 
-	// ignore SIGURG signal because it is not expected signal
-	if ws.Stopped() && ws.StopSignal() == syscall.SIGURG {
-		return d.Continue()
+	if ws.Stopped() {
+		switch ws.StopSignal() {
+		case syscall.SIGTRAP:
+			fmt.Println("hit breakpoint!")
+		default:
+			// ignore SIGURG signal because it is not expected signal
+			return d.Continue()
+		}
 	}
+
 	return nil
 }
 
@@ -84,6 +94,17 @@ func (d *Debugger) Quit() error {
 	}
 
 	return ErrDebuggeeFinished
+}
+
+func (d *Debugger) SetBreakpoint(addr uint64) error {
+	bp, err := NewBreakpoint(d.pid, uintptr(addr))
+	if err != nil {
+		return err
+	}
+
+	d.breakpoints[addr] = bp
+
+	return nil
 }
 
 func (d *Debugger) wait() (unix.WaitStatus, error) {

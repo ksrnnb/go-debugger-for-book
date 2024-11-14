@@ -2,8 +2,7 @@ package debugger
 
 import (
 	"encoding/binary"
-
-	"golang.org/x/sys/unix"
+	"syscall"
 )
 
 const Int3Instruction = 0xcc
@@ -27,7 +26,7 @@ func NewBreakpoint(pid int, addr uintptr) (*Breakpoint, error) {
 
 // Enable reads the instruction at the address of the breakpoint and rewrites it to an INT3 instruction.
 func (bp *Breakpoint) Enable() error {
-	_, err := unix.PtracePeekData(bp.pid, bp.addr, bp.originalInstruction)
+	_, err := syscall.PtracePeekData(bp.pid, bp.addr, bp.originalInstruction)
 	if err != nil {
 		return err
 	}
@@ -38,7 +37,7 @@ func (bp *Breakpoint) Enable() error {
 	newInstruction := make([]byte, 8)
 	binary.LittleEndian.PutUint64(newInstruction, newData)
 
-	_, err = unix.PtracePokeData(bp.pid, bp.addr, newInstruction)
+	_, err = syscall.PtracePokeData(bp.pid, bp.addr, newInstruction)
 	if err != nil {
 		return err
 	}
@@ -50,7 +49,7 @@ func (bp *Breakpoint) Enable() error {
 // Disable updates the instruction at the address of the breakpoint to the original instruction
 // before overwriting it with the INT3 instruction
 func (bp *Breakpoint) Disable() error {
-	_, err := unix.PtracePokeData(bp.pid, bp.addr, bp.originalInstruction)
+	_, err := syscall.PtracePokeData(bp.pid, bp.addr, bp.originalInstruction)
 	if err != nil {
 		return err
 	}

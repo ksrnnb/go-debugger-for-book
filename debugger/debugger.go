@@ -59,6 +59,10 @@ func (d *Debugger) Launch() error {
 }
 
 func (d *Debugger) Continue() error {
+	if err := d.stepOverBreakpointIfNeeded(); err != nil {
+		return fmt.Errorf("failed to step over breakpoint: %w", err)
+	}
+
 	if err := syscall.PtraceCont(d.pid, 0); err != nil {
 		return fmt.Errorf("faield to execute ptrace cont: %w", err)
 	}
@@ -71,7 +75,9 @@ func (d *Debugger) Continue() error {
 	if ws.Stopped() {
 		switch ws.StopSignal() {
 		case syscall.SIGTRAP:
-			fmt.Println("hit breakpoint!")
+			if err := d.onBreakpointHit(); err != nil {
+				return err
+			}
 		default:
 			// ignore SIGURG signal because it is not expected signal
 			return d.Continue()
@@ -100,6 +106,10 @@ func (d *Debugger) SetBreakpoint(addr uint64) error {
 	return nil
 }
 
+func (d *Debugger) DumpRegisters() error {
+	return dumpRegisters(d.pid)
+}
+
 func (d *Debugger) wait() (syscall.WaitStatus, error) {
 	var ws syscall.WaitStatus
 	_, err := syscall.Wait4(d.pid, &ws, syscall.WALL, nil)
@@ -119,5 +129,65 @@ func (d *Debugger) cleanup() error {
 	if err := syscall.Kill(-d.pid, syscall.SIGTERM); err != nil {
 		return fmt.Errorf("failed to kill child process %d: %s", d.pid, err)
 	}
+	return nil
+}
+
+func (d *Debugger) getPC() (uint64, error) {
+	return readRegister(d.pid, Rip)
+}
+
+func (d *Debugger) setPC(pc uint64) error {
+	return writeRegister(d.pid, Rip, pc)
+}
+
+func (d *Debugger) onBreakpointHit() error {
+	pc, err := d.getPC()
+	if err != nil {
+		return err
+	}
+
+	// PC is incremented by 1 when the INT3 instruction is executed,
+	// so PC is restored when the breakpoint is hit.
+	previousPC := pc - 1
+	if err := d.setPC(previousPC); err != nil {
+		return err
+	}
+
+	fmt.Printf("hit breakpoint at 0x%x\n", previousPC)
+
+	return nil
+}
+
+func (d *Debugger) stepOverBreakpointIfNeeded() error {
+	pc, err := d.getPC()
+	if err != nil {
+		return err
+	}
+
+	bp, ok := d.breakpoints[pc]
+	if !ok {
+		return nil
+	}
+
+	if !bp.IsEnabled() {
+		return nil
+	}
+
+	if err := bp.Disable(); err != nil {
+		return err
+	}
+
+	if err := syscall.PtraceSingleStep(d.pid); err != nil {
+		return err
+	}
+
+	if _, err := d.wait(); err != nil {
+		return err
+	}
+
+	if err := bp.Enable(); err != nil {
+		return err
+	}
+
 	return nil
 }

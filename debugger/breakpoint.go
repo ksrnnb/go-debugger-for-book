@@ -46,6 +46,18 @@ func (bp *Breakpoint) Enable() error {
 	return nil
 }
 
+// Disable updates the instruction at the address of the breakpoint to the original instruction
+// before overwriting it with the INT3 instruction
+func (bp *Breakpoint) Disable() error {
+	_, err := syscall.PtracePokeData(bp.pid, bp.addr, bp.originalInstruction)
+	if err != nil {
+		return err
+	}
+
+	bp.isEnabled = false
+	return nil
+}
+
 func (bp *Breakpoint) IsEnabled() bool {
 	return bp.isEnabled
 }

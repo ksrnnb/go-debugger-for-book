@@ -33,6 +33,10 @@ func NewCommands() *Commands {
 				aliases: []string{"break", "b"},
 				cmdFn:   setBreakpoint,
 			},
+			{
+				aliases: []string{"dump", "d"},
+				cmdFn:   dumpRegisters,
+			},
 		},
 	}
 }
@@ -56,4 +60,8 @@ func setBreakpoint(dbg *debugger.Debugger, args []string) error {
 	}
 
 	return dbg.SetBreakpoint(addr)
+}
+
+func dumpRegisters(dbg *debugger.Debugger, args []string) error {
+	return dbg.DumpRegisters()
 }

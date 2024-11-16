@@ -1,6 +1,9 @@
 package terminal
 
 import (
+	"errors"
+	"strconv"
+
 	"github.com/ksrnnb/go-debugger/debugger"
 )
 
@@ -26,6 +29,10 @@ func NewCommands() *Commands {
 				aliases: []string{"quit", "q"},
 				cmdFn:   quit,
 			},
+			{
+				aliases: []string{"break", "b"},
+				cmdFn:   setBreakpoint,
+			},
 		},
 	}
 }
@@ -36,4 +43,17 @@ func cont(dbg *debugger.Debugger, args []string) error {
 
 func quit(dbg *debugger.Debugger, args []string) error {
 	return dbg.Quit()
+}
+
+func setBreakpoint(dbg *debugger.Debugger, args []string) error {
+	if len(args) == 0 {
+		return errors.New("length of args must be greater than 0")
+	}
+
+	addr, err := strconv.ParseUint(args[0], 16, 64)
+	if err != nil {
+		return errors.New("breakpoint address must be parsed as uint64")
+	}
+
+	return dbg.SetBreakpoint(addr)
 }

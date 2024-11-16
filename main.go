@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime"
 
 	"github.com/ksrnnb/go-debugger/debugger"
 	"github.com/ksrnnb/go-debugger/terminal"
@@ -13,6 +14,8 @@ import (
 var debuggeePath string
 
 func init() {
+	runtime.LockOSThread()
+
 	flag.StringVar(&debuggeePath, "path", "", "path of debuggee program")
 }
 

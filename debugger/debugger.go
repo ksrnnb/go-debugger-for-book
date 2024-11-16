@@ -6,8 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"syscall"
-
-	"golang.org/x/sys/unix"
 )
 
 // ErrDebuggeeFinished is used when debuggee processs is finished.
@@ -18,12 +16,16 @@ type Config struct {
 }
 
 type Debugger struct {
-	config *Config
-	pid    int
+	config      *Config
+	pid         int
+	breakpoints map[uint64]*Breakpoint
 }
 
 func NewDebugger(config *Config) (*Debugger, error) {
-	d := &Debugger{config: config}
+	d := &Debugger{
+		config:      config,
+		breakpoints: make(map[uint64]*Breakpoint),
+	}
 	if err := d.Launch(); err != nil {
 		return nil, err
 	}
@@ -57,6 +59,10 @@ func (d *Debugger) Launch() error {
 }
 
 func (d *Debugger) Continue() error {
+	if err := d.stepOverBreakpointIfNeeded(); err != nil {
+		return fmt.Errorf("failed to step over breakpoint: %w", err)
+	}
+
 	if err := syscall.PtraceCont(d.pid, 0); err != nil {
 		return fmt.Errorf("faield to execute ptrace cont: %w", err)
 	}
@@ -66,15 +72,18 @@ func (d *Debugger) Continue() error {
 		return err
 	}
 
-	// ws.Exited() will be true when child process is finished.
-	if ws.Exited() {
-		return ErrDebuggeeFinished
+	if ws.Stopped() {
+		switch ws.StopSignal() {
+		case syscall.SIGTRAP:
+			if err := d.handleHitBreakpoint(); err != nil {
+				return err
+			}
+		default:
+			// ignore SIGURG signal because it is not expected signal
+			return d.Continue()
+		}
 	}
 
-	// ignore SIGURG signal because it is not expected signal
-	if ws.Stopped() && ws.StopSignal() == syscall.SIGURG {
-		return d.Continue()
-	}
 	return nil
 }
 
@@ -86,14 +95,84 @@ func (d *Debugger) Quit() error {
 	return ErrDebuggeeFinished
 }
 
-func (d *Debugger) wait() (unix.WaitStatus, error) {
-	var ws unix.WaitStatus
-	_, err := unix.Wait4(d.pid, &ws, unix.WALL, nil)
+func (d *Debugger) SetBreakpoint(addr uint64) error {
+	bp, err := NewBreakpoint(d.pid, uintptr(addr))
 	if err != nil {
-		return 0, fmt.Errorf("failed to wait pid %d", d.pid)
+		return err
 	}
 
-	return ws, nil
+	d.breakpoints[addr] = bp
+
+	return nil
+}
+
+func (d *Debugger) DumpRegisters() error {
+	return dumpRegisters(d.pid)
+}
+
+func (d *Debugger) stepOverBreakpointIfNeeded() error {
+	pc, err := d.getPC()
+	if err != nil {
+		return err
+	}
+
+	bp, ok := d.breakpoints[pc]
+	if !ok {
+		return nil
+	}
+
+	if !bp.IsEnabled() {
+		return nil
+	}
+
+	if err := bp.Disable(); err != nil {
+		return err
+	}
+
+	if err := syscall.PtraceSingleStep(d.pid); err != nil {
+		return err
+	}
+
+	if _, err := d.wait(); err != nil {
+		return err
+	}
+
+	if err := bp.Enable(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (d *Debugger) getPC() (uint64, error) {
+	regs, err := getRegisters(d.pid)
+	if err != nil {
+		return 0, err
+	}
+
+	return regs.Rip, nil
+}
+
+func (d *Debugger) setPC(pc uint64) error {
+	return setRegister(d.pid, Rip, pc)
+}
+
+func (d *Debugger) handleHitBreakpoint() error {
+	pc, err := d.getPC()
+	if err != nil {
+		return err
+	}
+
+	// PC is incremented by 1 when the INT3 instruction is executed,
+	// so PC is restored when the breakpoint is hit.
+	previousPC := pc - 1
+	if err := d.setPC(previousPC); err != nil {
+		return err
+	}
+
+	fmt.Printf("hit breakpoint at 0x%x\n", previousPC)
+
+	return nil
 }
 
 func (d *Debugger) cleanup() error {
@@ -101,4 +180,19 @@ func (d *Debugger) cleanup() error {
 		return fmt.Errorf("failed to kill child process %d: %s", d.pid, err)
 	}
 	return nil
+}
+
+func (d *Debugger) wait() (syscall.WaitStatus, error) {
+	var ws syscall.WaitStatus
+	_, err := syscall.Wait4(d.pid, &ws, syscall.WALL, nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to wait pid %d", d.pid)
+	}
+
+	// ws.Exited() will be true when child process is finished.
+	if ws.Exited() {
+		return 0, ErrDebuggeeFinished
+	}
+
+	return ws, nil
 }

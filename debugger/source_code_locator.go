@@ -5,10 +5,13 @@ import (
 	"debug/elf"
 	"debug/gosym"
 	"errors"
+	"fmt"
 )
 
 type Locator interface {
 	PCToFileLine(pc uint64) (filename string, line int)
+	FuncToAddr(funcSymbol string) (uint64, error)
+	FileLineToAddr(filename string, line int) (uint64, error)
 }
 
 // SourceCodeLocator converts memory address to file name and line number.
@@ -63,4 +66,63 @@ func NewSourceCodeLocator(debuggeePath string) (*SourceCodeLocator, error) {
 func (l *SourceCodeLocator) PCToFileLine(pc uint64) (filename string, line int) {
 	fn, ln, _ := l.st.PCToLine(pc)
 	return fn, ln
+}
+
+func (l *SourceCodeLocator) FuncToAddr(funcSymbol string) (uint64, error) {
+	fn := l.st.LookupFunc(funcSymbol)
+	if fn == nil {
+		return 0, fmt.Errorf("failed to find function: %s", funcSymbol)
+	}
+
+	peAddr, err := l.getPrologueEndAddress(fn)
+	if err != nil {
+		return 0, err
+	}
+
+	return peAddr, nil
+}
+
+func (l *SourceCodeLocator) FileLineToAddr(filename string, line int) (uint64, error) {
+	addr, fn, err := l.st.LineToPC(filename, line)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get addr by filename %s and line %d: %s", filename, line, err)
+	}
+
+	if addr == fn.Entry {
+		return l.getPrologueEndAddress(fn)
+	}
+
+	return addr, nil
+}
+
+func (l *SourceCodeLocator) getPrologueEndAddress(fn *gosym.Func) (uint64, error) {
+	reader := l.dwf.Reader()
+	for {
+		entry, err := reader.Next()
+		if err != nil {
+			break
+		}
+
+		if entry.Tag != dwarf.TagCompileUnit {
+			continue
+		}
+
+		lineReader, err := l.dwf.LineReader(entry)
+		if err != nil {
+			return 0, err
+		}
+
+		var lineEntry dwarf.LineEntry
+		for lineReader.Next(&lineEntry) == nil {
+			if lineEntry.Address == fn.Entry {
+				for lineReader.Next(&lineEntry) == nil {
+					if lineEntry.PrologueEnd {
+						return lineEntry.Address, nil
+					}
+				}
+			}
+		}
+	}
+
+	return 0, fmt.Errorf("faield to get prologue end address for function %s", fn.Name)
 }

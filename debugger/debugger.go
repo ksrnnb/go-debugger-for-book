@@ -97,7 +97,37 @@ func (d *Debugger) Quit() error {
 	return ErrDebuggeeFinished
 }
 
-func (d *Debugger) SetBreakpoint(addr uint64) error {
+type SetBreakpointArgs struct {
+	Addr uint64
+	// FunctionSymbol is <package name>.<function name> like main.main
+	FunctionSymbol string
+	Filename       string
+	Line           int
+}
+
+func (d *Debugger) SetBreakpoint(args SetBreakpointArgs) error {
+	var addr uint64
+	var err error
+	if args.Addr != 0 {
+		addr = args.Addr
+	}
+	if args.FunctionSymbol != "" {
+		addr, err = d.locator.FuncToAddr(args.FunctionSymbol)
+		if err != nil {
+			return fmt.Errorf("failed to find symbol %s: %w", args.FunctionSymbol, err)
+		}
+	}
+	if args.Filename != "" && args.Line != 0 {
+		addr, err = d.locator.FileLineToAddr(args.Filename, args.Line)
+		if err != nil {
+			return fmt.Errorf("failed to find file %s and line %d: %w", args.Filename, args.Line, err)
+		}
+	}
+
+	if addr == 0 {
+		return fmt.Errorf("failed to get breakpoint address. args: %+v", args)
+	}
+
 	bp, err := NewBreakpoint(d.pid, uintptr(addr))
 	if err != nil {
 		return err

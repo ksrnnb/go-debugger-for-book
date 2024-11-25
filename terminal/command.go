@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 
 	"github.com/ksrnnb/go-debugger/debugger"
@@ -55,11 +56,27 @@ func setBreakpoint(dbg *debugger.Debugger, args []string) error {
 	}
 
 	addr, err := strconv.ParseUint(args[0], 16, 64)
-	if err != nil {
-		return errors.New("breakpoint address must be parsed as uint64")
+	if err == nil {
+		return dbg.SetBreakpoint(debugger.SetBreakpointArgs{Addr: addr})
 	}
 
-	return dbg.SetBreakpoint(addr)
+	if len(args) == 1 {
+		return dbg.SetBreakpoint(debugger.SetBreakpointArgs{FunctionSymbol: args[0]})
+	}
+
+	if len(args) == 2 {
+		line, err := strconv.Atoi(args[1])
+		if err != nil {
+			return fmt.Errorf("failed to parse line number: %w", err)
+		}
+
+		return dbg.SetBreakpoint(debugger.SetBreakpointArgs{
+			Filename: args[0],
+			Line:     line,
+		})
+	}
+
+	return errors.New("length of args must be 1 or 2")
 }
 
 func dumpRegisters(dbg *debugger.Debugger, args []string) error {

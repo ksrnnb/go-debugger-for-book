@@ -32,9 +32,18 @@ func main() {
 	}
 	defer cleanup()
 
-	d, err := debugger.NewDebugger(&debugger.Config{
-		DebuggeePath: absDebuggeePath,
-	})
+	locator, err := debugger.NewSourceCodeLocator(absDebuggeePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "faield to initialize source code locator: %s", err)
+		return
+	}
+
+	d, err := debugger.NewDebugger(
+		&debugger.Config{
+			DebuggeePath: absDebuggeePath,
+		},
+		locator,
+	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to initialize debugger: %s", err)
 		return

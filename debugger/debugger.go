@@ -19,12 +19,14 @@ type Debugger struct {
 	config      *Config
 	pid         int
 	breakpoints map[uint64]*Breakpoint
+	locator     Locator
 }
 
-func NewDebugger(config *Config) (*Debugger, error) {
+func NewDebugger(config *Config, locator Locator) (*Debugger, error) {
 	d := &Debugger{
 		config:      config,
 		breakpoints: make(map[uint64]*Breakpoint),
+		locator:     locator,
 	}
 	if err := d.Launch(); err != nil {
 		return nil, err
@@ -155,6 +157,10 @@ func (d *Debugger) onBreakpointHit() error {
 
 	fmt.Printf("hit breakpoint at 0x%x\n", previousPC)
 
+	if err := d.printSourceCode(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -190,4 +196,23 @@ func (d *Debugger) stepOverBreakpointIfNeeded() error {
 	}
 
 	return nil
+}
+
+func (d *Debugger) printSourceCode() error {
+	pc, err := d.getPC()
+	if err != nil {
+		return err
+	}
+
+	filename, line := d.locator.PCToFileLine(pc)
+	f, err := os.Open(filename)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	printSourceCode(f, line)
+
+	return nil
+
 }
